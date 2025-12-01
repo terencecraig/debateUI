@@ -174,8 +174,8 @@ describe('App', () => {
       await user.click(screen.getByText('Maximum Accuracy'));
 
       await waitFor(() => {
-        expect(screen.getByText('Est. Cost')).toBeInTheDocument();
-        expect(screen.getByText('Est. Time')).toBeInTheDocument();
+        expect(screen.getByText('cost')).toBeInTheDocument();
+        expect(screen.getByText('time')).toBeInTheDocument();
       });
     });
   });

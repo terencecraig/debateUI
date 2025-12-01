@@ -4,13 +4,46 @@ import { TurnResponseSchema, ConsensusResultSchema, type TurnResponse, type Cons
 import { networkError, type ApiError } from '@debateui/core';
 
 /**
+ * CCR (ConstantContextRouter) event types for detailed workflow visibility
+ */
+export type CCREventType =
+  | 'debate.initialized'
+  | 'debate.round.started'
+  | 'debate.round.completed'
+  | 'turn.started'
+  | 'turn.streaming'
+  | 'turn.completed'
+  | 'model.api.call'
+  | 'model.api.response'
+  | 'consensus.check'
+  | 'consensus.reached'
+  | 'context.stored'
+  | 'context.retrieved'
+  | 'token.usage'
+  | 'cost.update'
+  | 'error.occurred';
+
+/**
+ * CCR event payload for real-time workflow visibility
+ */
+export interface CCREventData {
+  readonly eventId: string;
+  readonly timestamp: number;
+  readonly eventType: CCREventType;
+  readonly agent: string | undefined;
+  readonly message: string;
+  readonly metadata: Record<string, unknown> | undefined;
+}
+
+/**
  * Stream event types that can be received from the SSE endpoint
  */
 export type StreamEvent =
   | { type: 'turn'; data: TurnResponse }
   | { type: 'consensus'; data: ConsensusResult }
   | { type: 'error'; data: { message: string; recoverable: boolean } }
-  | { type: 'complete'; data: { debateId: string } };
+  | { type: 'complete'; data: { debateId: string } }
+  | { type: 'ccr'; data: CCREventData };
 
 /**
  * Handler function for processing stream events
@@ -63,11 +96,42 @@ const StreamEventConsensusSchema = z.object({
   data: ConsensusResultSchema,
 });
 
+const CCREventTypeSchema = z.enum([
+  'debate.initialized',
+  'debate.round.started',
+  'debate.round.completed',
+  'turn.started',
+  'turn.streaming',
+  'turn.completed',
+  'model.api.call',
+  'model.api.response',
+  'consensus.check',
+  'consensus.reached',
+  'context.stored',
+  'context.retrieved',
+  'token.usage',
+  'cost.update',
+  'error.occurred',
+]);
+
+const StreamEventCCRSchema = z.object({
+  type: z.literal('ccr'),
+  data: z.object({
+    eventId: z.string(),
+    timestamp: z.number(),
+    eventType: CCREventTypeSchema,
+    agent: z.string().optional(),
+    message: z.string(),
+    metadata: z.record(z.unknown()).optional(),
+  }),
+});
+
 const StreamEventSchema = z.union([
   StreamEventTurnSchema,
   StreamEventConsensusSchema,
   StreamEventErrorSchema,
   StreamEventCompleteSchema,
+  StreamEventCCRSchema,
 ]);
 
 /**
@@ -268,4 +332,11 @@ export const isErrorEvent = (event: StreamEvent): event is { type: 'error'; data
  */
 export const isCompleteEvent = (event: StreamEvent): event is { type: 'complete'; data: { debateId: string } } => {
   return event.type === 'complete';
+};
+
+/**
+ * Type guard to check if event is a CCR event
+ */
+export const isCCREvent = (event: StreamEvent): event is { type: 'ccr'; data: CCREventData } => {
+  return event.type === 'ccr';
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useDebateStore } from '@debateui/state';
 import {
   createSSEClient,
@@ -6,7 +6,10 @@ import {
   isConsensusEvent,
   isErrorEvent,
   isCompleteEvent,
+  isCCREvent,
   type SSEClient,
+  type CCREventData,
+  type StreamEvent,
 } from '@debateui/api-client';
 import { networkError, formatApiError, type ApiError } from '@debateui/core';
 import * as E from 'fp-ts/Either';
@@ -29,6 +32,8 @@ export type StreamStatus = 'disconnected' | 'connecting' | 'connected' | 'reconn
 export interface UseDebateStreamReturn {
   status: StreamStatus;
   error: string | null;
+  ccrEvents: readonly CCREventData[];
+  clearEvents: () => void;
 }
 
 /**
@@ -59,9 +64,12 @@ export interface UseDebateStreamReturn {
  * }
  * ```
  */
+const MAX_CCR_EVENTS = 200;
+
 export const useDebateStream = (baseUrl: string): UseDebateStreamReturn => {
   const [status, setStatus] = useState<StreamStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [ccrEvents, setCcrEvents] = useState<readonly CCREventData[]>([]);
 
   // Store actions
   const receiveTurn = useDebateStore((state) => state.receiveTurn);
@@ -73,6 +81,9 @@ export const useDebateStream = (baseUrl: string): UseDebateStreamReturn => {
 
   // Track SSE client instance
   const clientRef = useRef<SSEClient | null>(null);
+
+  // Clear events
+  const clearEvents = useCallback(() => setCcrEvents([]), []);
 
   // Check if debate is running
   const isDebateRunning = debate._tag === 'Running';
@@ -100,7 +111,7 @@ export const useDebateStream = (baseUrl: string): UseDebateStreamReturn => {
         const result = await createSSEClient(
           debateId,
           baseUrl,
-          (event) => {
+          (event: StreamEvent) => {
             // Handle different event types
             if (isTurnEvent(event)) {
               // Dispatch turn to store
@@ -126,6 +137,13 @@ export const useDebateStream = (baseUrl: string): UseDebateStreamReturn => {
                 clientRef.current = null;
                 setStatus('disconnected');
               }
+            } else if (isCCREvent(event)) {
+              // Collect CCR events for display
+              setCcrEvents(prev => {
+                const updated = [...prev, event.data];
+                // Keep only the most recent events
+                return updated.slice(-MAX_CCR_EVENTS);
+              });
             }
           },
           {
@@ -174,5 +192,7 @@ export const useDebateStream = (baseUrl: string): UseDebateStreamReturn => {
   return {
     status,
     error,
+    ccrEvents,
+    clearEvents,
   };
 };

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type FC } from 'react';
+import { useState, useCallback, useEffect, useRef, type FC } from 'react';
 import { useDebateStore } from '@debateui/state';
 import {
   useDebateState,
@@ -7,6 +7,8 @@ import {
   useIsDebateRunning,
   useConsensus,
 } from '@debateui/state';
+import { useDebateStream } from './hooks/useDebateStream';
+import type { CCREventData, CCREventType } from '@debateui/api-client';
 import * as O from 'fp-ts/Option';
 import type { TurnResponse } from '@debateui/core';
 
@@ -33,6 +35,8 @@ interface Recommendation {
   estimatedTime: string;
   confidenceLevel: string;
 }
+
+// CCR Event Types imported from @debateui/api-client
 
 // ============================================
 // AGENT DATABASE
@@ -251,6 +255,82 @@ const SparklesIcon: FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+// CCR Event Stream - Using real useDebateStream hook from @debateui/api-client
+
+// ============================================
+// EVENT LOG COMPONENT
+// ============================================
+
+const getEventColor = (type: CCREventType): string => {
+  const colors: Record<CCREventType, string> = {
+    'debate.initialized': 'text-blue-400',
+    'debate.round.started': 'text-cyan-400',
+    'debate.round.completed': 'text-cyan-500',
+    'turn.started': 'text-yellow-400',
+    'turn.streaming': 'text-yellow-300',
+    'turn.completed': 'text-green-400',
+    'model.api.call': 'text-purple-400',
+    'model.api.response': 'text-purple-300',
+    'consensus.check': 'text-orange-400',
+    'consensus.reached': 'text-green-500',
+    'context.stored': 'text-blue-300',
+    'context.retrieved': 'text-blue-300',
+    'token.usage': 'text-gray-400',
+    'cost.update': 'text-amber-400',
+    'error.occurred': 'text-red-500',
+  };
+  return colors[type] ?? 'text-gray-400';
+};
+
+const getAgentColor = (agent?: string): string => {
+  if (!agent) return '';
+  if (agent.includes('claude')) return 'text-violet-400';
+  if (agent.includes('gpt')) return 'text-green-400';
+  if (agent.includes('gemini')) return 'text-blue-400';
+  if (agent.includes('deepseek')) return 'text-pink-400';
+  return 'text-gray-400';
+};
+
+interface EventLogProps {
+  events: readonly CCREventData[];
+}
+
+const EventLog: FC<EventLogProps> = ({ events }) => {
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [events]);
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}.${d.getMilliseconds().toString().padStart(3, '0')}`;
+  };
+
+  return (
+    <div ref={logRef} className="event-log font-mono text-xs leading-tight overflow-y-auto h-full">
+      {events.map((event) => (
+        <div key={event.eventId} className="event-line py-0.5 px-2 hover:bg-white/5 flex gap-2">
+          <span className="text-gray-500 shrink-0">{formatTime(event.timestamp)}</span>
+          <span className={`shrink-0 w-28 ${getEventColor(event.eventType)}`}>{event.eventType}</span>
+          {event.agent && <span className={`shrink-0 w-16 ${getAgentColor(event.agent)}`}>[{event.agent}]</span>}
+          <span className="text-gray-300 truncate">{event.message}</span>
+          {event.metadata && (
+            <span className="text-gray-500 truncate ml-auto">
+              {Object.entries(event.metadata).map(([k, v]) => `${k}=${v}`).join(' ')}
+            </span>
+          )}
+        </div>
+      ))}
+      {events.length === 0 && (
+        <div className="text-gray-500 text-center py-4">Waiting for events...</div>
+      )}
+    </div>
+  );
+};
+
 // ============================================
 // STEP COMPONENTS
 // ============================================
@@ -271,10 +351,10 @@ const QuestionStep: FC<QuestionStepProps> = ({ question, setQuestion, onNext }) 
 
   return (
     <div className="slide-up">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-3">What would you like to explore?</h1>
-        <p className="text-secondary">
-          Enter your question and we'll assemble the perfect panel of AI agents to debate it.
+      <div className="text-center mb-4">
+        <h1 className="text-2xl font-bold mb-1">What would you like to explore?</h1>
+        <p className="text-secondary text-sm">
+          Enter your question and we'll assemble the perfect AI panel to debate it.
         </p>
       </div>
 
@@ -283,17 +363,17 @@ const QuestionStep: FC<QuestionStepProps> = ({ question, setQuestion, onNext }) 
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="e.g., Should we use microservices or a monolith for our new e-commerce platform?"
-          className="input-large min-h-[120px] resize-none mb-4"
+          className="input-large min-h-[100px] resize-none mb-3"
           autoFocus
         />
         <div className="flex justify-between items-center">
-          <span className="text-sm text-muted">
-            {question.length < 10 ? `${10 - question.length} more characters needed` : '✓ Ready to continue'}
+          <span className="text-xs text-muted">
+            {question.length < 10 ? `${10 - question.length} more chars` : '✓ Ready'}
           </span>
           <button
             type="submit"
             disabled={question.trim().length < 10}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary flex items-center gap-2 py-2 px-4"
           >
             Continue
             <ArrowRightIcon className="w-4 h-4" />
@@ -301,9 +381,9 @@ const QuestionStep: FC<QuestionStepProps> = ({ question, setQuestion, onNext }) 
         </div>
       </form>
 
-      <div className="mt-12 text-center">
-        <p className="text-sm text-muted mb-4">Try these examples:</p>
-        <div className="flex flex-wrap justify-center gap-2">
+      <div className="mt-6 text-center">
+        <p className="text-xs text-muted mb-2">Examples:</p>
+        <div className="flex flex-wrap justify-center gap-1">
           {[
             'What are the trade-offs between React and Vue for a startup?',
             'How should we approach pricing for our SaaS product?',
@@ -312,9 +392,9 @@ const QuestionStep: FC<QuestionStepProps> = ({ question, setQuestion, onNext }) 
             <button
               key={example}
               onClick={() => setQuestion(example)}
-              className="text-sm px-4 py-2 rounded-full bg-surface border border-light hover:border-primary/30 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-full bg-surface border border-light hover:border-primary/30 transition-colors"
             >
-              {example.slice(0, 45)}...
+              {example.slice(0, 50)}...
             </button>
           ))}
         </div>
@@ -335,64 +415,55 @@ const GoalStep: FC<GoalStepProps> = ({ goal, setGoal, onNext, onBack }) => {
     {
       id: 'accuracy',
       title: 'Maximum Accuracy',
-      description: 'Get the most thorough, well-verified answer',
+      description: 'Thorough, well-verified answer',
       icon: '🎯',
-      detail: '3-4 agents • More rounds • Higher confidence',
+      detail: '3-4 agents • More rounds',
     },
     {
       id: 'balanced',
       title: 'Balanced',
-      description: 'Good quality at reasonable cost',
+      description: 'Good quality, reasonable cost',
       icon: '⚖️',
-      detail: '2-3 agents • Standard rounds • Great value',
+      detail: '2-3 agents • Standard',
     },
     {
       id: 'budget',
       title: 'Budget Friendly',
       description: 'Quick answer, minimal cost',
       icon: '💰',
-      detail: '2 agents • Fewer rounds • Cost efficient',
+      detail: '2 agents • Fast',
     },
   ];
 
   return (
     <div className="slide-up">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-3">What's your priority?</h1>
-        <p className="text-secondary">
-          This helps us select the right agents and debate intensity.
-        </p>
+      <div className="text-center mb-4">
+        <h1 className="text-2xl font-bold mb-1">What's your priority?</h1>
+        <p className="text-secondary text-sm">Select debate intensity and agent count.</p>
       </div>
 
-      <div className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         {goals.map((g) => (
           <button
             key={g.id}
             onClick={() => setGoal(g.id)}
-            className={`goal-card text-left ${goal === g.id ? 'selected' : ''}`}
+            className={`goal-card text-left p-4 ${goal === g.id ? 'selected' : ''}`}
           >
-            <div className="text-3xl mb-3">{g.icon}</div>
-            <h3 className="font-semibold text-lg mb-1">{g.title}</h3>
-            <p className="text-secondary text-sm mb-3">{g.description}</p>
+            <div className="text-2xl mb-2">{g.icon}</div>
+            <h3 className="font-semibold mb-0.5">{g.title}</h3>
+            <p className="text-secondary text-xs mb-2">{g.description}</p>
             <p className="text-xs text-muted">{g.detail}</p>
             {goal === g.id && (
-              <CheckIcon className="absolute top-4 right-4 w-5 h-5 text-primary" />
+              <CheckIcon className="absolute top-3 right-3 w-4 h-4 text-primary" />
             )}
           </button>
         ))}
       </div>
 
       <div className="flex justify-between max-w-3xl mx-auto">
-        <button onClick={onBack} className="btn-secondary">
-          Back
-        </button>
-        <button
-          onClick={onNext}
-          disabled={!goal}
-          className="btn-primary flex items-center gap-2"
-        >
-          See Recommendation
-          <SparklesIcon className="w-4 h-4" />
+        <button onClick={onBack} className="btn-secondary py-2 px-4">Back</button>
+        <button onClick={onNext} disabled={!goal} className="btn-primary flex items-center gap-2 py-2 px-4">
+          See Panel <SparklesIcon className="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -413,78 +484,57 @@ const RecommendationStep: FC<RecommendationStepProps> = ({ question, goal, onSta
 
   return (
     <div className="slide-up">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-3">Your Debate Panel</h1>
-        <p className="text-secondary">
-          Based on your question and priorities, here's what we recommend.
-        </p>
+      <div className="text-center mb-4">
+        <h1 className="text-2xl font-bold mb-1">Your Debate Panel</h1>
+        <p className="text-secondary text-sm">Ready to launch based on your question and priorities.</p>
       </div>
 
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Detected Category */}
-        <div className="card p-4 flex items-center gap-4">
-          <span className="text-2xl">{categoryInfo.icon}</span>
-          <div>
-            <p className="text-sm text-muted">Detected Category</p>
-            <p className="font-semibold">{categoryInfo.label} Question</p>
-          </div>
-          <span className="category-badge ml-auto">{categoryInfo.description}</span>
+      <div className="max-w-2xl mx-auto space-y-3">
+        {/* Detected Category - inline */}
+        <div className="card p-3 flex items-center gap-3">
+          <span className="text-xl">{categoryInfo.icon}</span>
+          <span className="font-semibold">{categoryInfo.label} Question</span>
+          <span className="category-badge ml-auto text-xs">{categoryInfo.description}</span>
         </div>
 
         {/* Recommended Agents */}
-        <div className="recommendation-card">
-          <h3 className="font-semibold text-lg flex items-center gap-2">
-            <SparklesIcon className="w-5 h-5 text-primary" />
+        <div className="recommendation-card p-4">
+          <h3 className="font-semibold flex items-center gap-2 mb-3">
+            <SparklesIcon className="w-4 h-4 text-primary" />
             Recommended Agents
           </h3>
 
-          <div className="space-y-3">
+          <div className="space-y-2 mb-3">
             {recommendation.agents.map((agent) => (
-              <div key={agent.id} className="agent-row">
-                <div className="flex items-center gap-3">
-                  <span className={`agent-chip ${agent.color}`}>
-                    {agent.name}
-                  </span>
-                </div>
-                <p className="text-sm text-secondary">{agent.strength}</p>
+              <div key={agent.id} className="flex items-center justify-between py-1.5 border-b last:border-0 border-light">
+                <span className={`agent-chip ${agent.color} text-xs`}>{agent.name}</span>
+                <span className="text-xs text-secondary">{agent.strength.split(',')[0]}</span>
               </div>
             ))}
           </div>
 
-          {/* Reasoning */}
-          <div className="explanation-box">
-            <p className="font-medium mb-1">Why this panel?</p>
-            <p>{recommendation.reasoning}</p>
+          {/* Reasoning - compact */}
+          <div className="explanation-box text-xs p-3">
+            <p className="font-medium mb-0.5">Why this panel?</p>
+            <p className="leading-snug">{recommendation.reasoning.slice(0, 150)}...</p>
           </div>
 
-          {/* Estimates */}
-          <div className="grid grid-cols-3 gap-4 pt-2">
-            <div className="text-center">
-              <p className="font-semibold">{recommendation.estimatedCost}</p>
-              <p className="text-xs text-muted">Est. Cost</p>
-            </div>
-            <div className="text-center">
-              <p className="font-semibold">{recommendation.estimatedTime}</p>
-              <p className="text-xs text-muted">Est. Time</p>
-            </div>
-            <div className="text-center">
-              <p className="font-semibold">{recommendation.confidenceLevel}</p>
-              <p className="text-xs text-muted">Expected Quality</p>
-            </div>
+          {/* Estimates - inline */}
+          <div className="flex justify-between items-center pt-3 text-sm">
+            <span><b>{recommendation.estimatedCost}</b> <span className="text-muted text-xs">cost</span></span>
+            <span><b>{recommendation.estimatedTime}</b> <span className="text-muted text-xs">time</span></span>
+            <span><b>{recommendation.confidenceLevel.split(' ')[0]}</b> <span className="text-muted text-xs">quality</span></span>
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex justify-between">
-          <button onClick={onBack} className="btn-secondary">
-            Change Goal
-          </button>
+          <button onClick={onBack} className="btn-secondary py-2 px-4">Back</button>
           <button
             onClick={() => onStart(recommendation.agents.map(a => a.id))}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary flex items-center gap-2 py-2 px-4"
           >
-            Start Debate
-            <ArrowRightIcon className="w-4 h-4" />
+            Start Debate <ArrowRightIcon className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -493,7 +543,7 @@ const RecommendationStep: FC<RecommendationStepProps> = ({ question, goal, onSta
 };
 
 // ============================================
-// DEBATE VIEW
+// DEBATE VIEW - MISSION CONTROL
 // ============================================
 
 interface TurnCardProps {
@@ -501,131 +551,216 @@ interface TurnCardProps {
 }
 
 const TurnCard: FC<TurnCardProps> = ({ turn }) => {
-  const getAgentColor = (id: string): string => {
-    if (id.includes('claude')) return 'claude';
-    if (id.includes('gpt')) return 'gpt';
-    if (id.includes('gemini')) return 'gemini';
-    if (id.includes('deepseek')) return 'deepseek';
-    return 'claude';
+  const getAgentColorClass = (id: string): string => {
+    if (id.includes('claude')) return 'border-l-violet-500 bg-violet-500/5';
+    if (id.includes('gpt')) return 'border-l-green-500 bg-green-500/5';
+    if (id.includes('gemini')) return 'border-l-blue-500 bg-blue-500/5';
+    if (id.includes('deepseek')) return 'border-l-pink-500 bg-pink-500/5';
+    return 'border-l-gray-500 bg-gray-500/5';
+  };
+
+  const getAgentTextColor = (id: string): string => {
+    if (id.includes('claude')) return 'text-violet-400';
+    if (id.includes('gpt')) return 'text-green-400';
+    if (id.includes('gemini')) return 'text-blue-400';
+    if (id.includes('deepseek')) return 'text-pink-400';
+    return 'text-gray-400';
   };
 
   return (
-    <div className="card p-5 fade-in">
-      <div className="flex items-start gap-4">
-        <span className={`agent-chip ${getAgentColor(turn.participantId)} shrink-0`}>
+    <div className={`turn-card border-l-2 p-3 ${getAgentColorClass(turn.participantId)}`}>
+      <div className="flex items-center justify-between mb-1">
+        <span className={`font-mono text-sm font-semibold ${getAgentTextColor(turn.participantId)}`}>
           {turn.participantId}
         </span>
-        <div className="flex-1 min-w-0">
-          <p className="whitespace-pre-wrap leading-relaxed">{turn.content}</p>
-          <div className="flex items-center gap-4 mt-3 text-xs text-muted">
-            <span>{turn.tokensUsed} tokens</span>
-            <span>${turn.costUsd.toFixed(4)}</span>
-            <span>{turn.latencyMs}ms</span>
-          </div>
-        </div>
+        <span className="text-xs text-gray-500 font-mono">
+          {turn.tokensUsed}tok · ${turn.costUsd.toFixed(4)} · {turn.latencyMs}ms
+        </span>
       </div>
+      <p className="text-sm text-gray-200 leading-snug">{turn.content}</p>
     </div>
   );
 };
 
 interface DebateViewProps {
   question: string;
+  selectedAgents: string[];
   onReset: () => void;
 }
 
-const DebateView: FC<DebateViewProps> = ({ question, onReset }) => {
+// API base URL - can be configured via environment
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+
+const DebateView: FC<DebateViewProps> = ({ question, selectedAgents, onReset }) => {
   const debateState = useDebateState();
   const turns = useTurns();
   const currentRound = useCurrentRound();
   const isRunning = useIsDebateRunning();
   const consensus = useConsensus();
 
+  // Use real SSE stream for CCR events
+  const { status: streamStatus, ccrEvents, error: streamError } = useDebateStream(API_BASE_URL);
+
   const totalCost = turns.reduce((sum, t) => sum + t.costUsd, 0);
   const totalTokens = turns.reduce((sum, t) => sum + t.tokensUsed, 0);
+  const avgLatency = turns.length > 0
+    ? Math.round(turns.reduce((sum, t) => sum + t.latencyMs, 0) / turns.length)
+    : 0;
+
+  const eventsPerSecond = ccrEvents.length > 0 ? (ccrEvents.length / ((Date.now() - ccrEvents[0]!.timestamp) / 1000)).toFixed(1) : '0';
 
   return (
-    <div className="flex h-screen">
-      {/* Main content */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="border-b border-light p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="font-semibold text-lg">Debate in Progress</h1>
-              <p className="text-sm text-secondary truncate max-w-lg">{question}</p>
+    <div className="mission-control h-screen flex flex-col bg-slate-950 text-gray-100">
+      {/* Top Bar - Dense Status */}
+      <header className="status-bar bg-slate-900 border-b border-slate-700 px-3 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              {isRunning ? (
+                <span className="status-live flex items-center gap-1.5 text-xs font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-400">LIVE</span>
+                </span>
+              ) : debateState._tag === 'Completed' ? (
+                <span className="status-complete flex items-center gap-1.5 text-xs font-mono text-cyan-400">
+                  <CheckIcon className="w-3 h-3" />
+                  COMPLETE
+                </span>
+              ) : (
+                <span className="text-xs font-mono text-gray-500">IDLE</span>
+              )}
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                {isRunning && (
-                  <span className="flex items-center gap-2 text-sm text-primary">
-                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    Round {currentRound}
-                  </span>
-                )}
-                {debateState._tag === 'Completed' && (
-                  <span className="text-sm text-green-600">✓ Complete</span>
-                )}
-              </div>
-            </div>
+            <span className="text-xs text-gray-400 font-mono truncate max-w-md">
+              Q: {question.slice(0, 60)}{question.length > 60 ? '...' : ''}
+            </span>
           </div>
-        </header>
+          <div className="flex items-center gap-6 text-xs font-mono">
+            <span className="text-cyan-400">R{currentRound}</span>
+            <span className="text-amber-400">{turns.length} turns</span>
+            <span className="text-green-400">{totalTokens.toLocaleString()} tok</span>
+            <span className="text-yellow-400">${totalCost.toFixed(4)}</span>
+            <span className="text-purple-400">{avgLatency}ms avg</span>
+            <span className="text-gray-500">{eventsPerSecond} evt/s</span>
+          </div>
+        </div>
+      </header>
 
-        {/* Turns */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {turns.length === 0 && isRunning && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="typing-dots mx-auto mb-4">
-                  <span /><span /><span />
+      {/* Main Grid - 3 columns */}
+      <div className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
+        {/* Left: Agent Status Panel */}
+        <div className="col-span-2 border-r border-slate-700 p-2 flex flex-col">
+          <div className="text-xs font-mono text-gray-500 mb-2 px-1">AGENTS</div>
+          <div className="space-y-1">
+            {selectedAgents.map((agentId) => {
+              const agent = AGENTS[agentId];
+              const agentTurns = turns.filter(t => t.participantId === agentId);
+              const agentCost = agentTurns.reduce((s, t) => s + t.costUsd, 0);
+              const agentTokens = agentTurns.reduce((s, t) => s + t.tokensUsed, 0);
+
+              return (
+                <div key={agentId} className="agent-status-card bg-slate-800/50 rounded p-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${
+                      agentId.includes('claude') ? 'bg-violet-400' :
+                      agentId.includes('gpt') ? 'bg-green-400' :
+                      agentId.includes('gemini') ? 'bg-blue-400' :
+                      'bg-pink-400'
+                    }`} />
+                    <span className="text-xs font-semibold truncate">{agent?.name ?? agentId}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-xs font-mono text-gray-400">
+                    <span>{agentTurns.length} turns</span>
+                    <span>{agentTokens} tok</span>
+                    <span className="col-span-2 text-amber-400/80">${agentCost.toFixed(4)}</span>
+                  </div>
                 </div>
-                <p className="text-secondary">Agents are thinking...</p>
+              );
+            })}
+          </div>
+
+          {/* Consensus indicator */}
+          {O.isSome(consensus) && (
+            <div className="mt-auto pt-2 border-t border-slate-700">
+              <div className="text-xs font-mono text-gray-500 mb-1">CONSENSUS</div>
+              <div className="bg-slate-800/50 rounded p-2">
+                <div className="text-2xl font-bold text-cyan-400 font-mono">
+                  {Math.round(consensus.value.percentage * 100)}%
+                </div>
+                <div className="text-xs text-gray-500 capitalize">{consensus.value.level}</div>
               </div>
             </div>
           )}
-          {turns.map((turn) => (
-            <TurnCard key={turn.turnId} turn={turn} />
-          ))}
+
+          <button
+            onClick={onReset}
+            className="mt-2 text-xs font-mono text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-slate-700"
+          >
+            [NEW DEBATE]
+          </button>
+        </div>
+
+        {/* Center: Turns */}
+        <div className="col-span-6 flex flex-col overflow-hidden">
+          <div className="text-xs font-mono text-gray-500 px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+            <span>DEBATE TURNS</span>
+            <span className="text-gray-600">{turns.length} responses</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {turns.length === 0 && isRunning && (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <div className="typing-dots mx-auto mb-2">
+                    <span /><span /><span />
+                  </div>
+                  <p className="text-xs text-gray-500 font-mono">Awaiting first response...</p>
+                </div>
+              </div>
+            )}
+            {turns.map((turn) => (
+              <TurnCard key={turn.turnId} turn={turn} />
+            ))}
+          </div>
+        </div>
+
+        {/* Right: Event Log */}
+        <div className="col-span-4 border-l border-slate-700 flex flex-col overflow-hidden bg-slate-900/50">
+          <div className="text-xs font-mono text-gray-500 px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              CCR EVENT STREAM
+              {streamStatus === 'connected' && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+              {streamStatus === 'connecting' && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />}
+              {streamStatus === 'error' && <span className="w-1.5 h-1.5 rounded-full bg-red-400" />}
+            </span>
+            <span className="text-green-500">{ccrEvents.length} events</span>
+          </div>
+          {streamError && (
+            <div className="text-xs text-red-400 px-3 py-1 bg-red-900/20 border-b border-red-900/50">
+              {streamError}
+            </div>
+          )}
+          <EventLog events={ccrEvents} />
         </div>
       </div>
 
-      {/* Sidebar */}
-      <aside className="w-72 border-l border-light p-6 space-y-6">
-        <div>
-          <h3 className="font-semibold mb-4">Metrics</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="metric">
-              <p className="metric-value">{turns.length}</p>
-              <p className="metric-label">Turns</p>
-            </div>
-            <div className="metric">
-              <p className="metric-value">{currentRound}</p>
-              <p className="metric-label">Round</p>
-            </div>
-            <div className="metric">
-              <p className="metric-value">{totalTokens.toLocaleString()}</p>
-              <p className="metric-label">Tokens</p>
-            </div>
-            <div className="metric">
-              <p className="metric-value">${totalCost.toFixed(4)}</p>
-              <p className="metric-label">Cost</p>
-            </div>
+      {/* Bottom Stats Bar */}
+      <footer className="bg-slate-900 border-t border-slate-700 px-3 py-1.5">
+        <div className="flex items-center justify-between text-xs font-mono text-gray-500">
+          <div className="flex items-center gap-4">
+            <span>DebateUI v0.1.0</span>
+            <span className="text-gray-600">|</span>
+            <span className={streamStatus === 'connected' ? 'text-green-500' : streamStatus === 'error' ? 'text-red-500' : 'text-yellow-500'}>
+              CCR {streamStatus}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span>Storage: Qdrant + PostgreSQL</span>
+            <span className="text-gray-600">|</span>
+            <span>Latency: {avgLatency}ms</span>
+            <span className="text-gray-600">|</span>
+            <span className="text-amber-500">${totalCost.toFixed(4)} total</span>
           </div>
         </div>
-
-        {O.isSome(consensus) && (
-          <div className="card p-4">
-            <h3 className="font-semibold mb-2">Consensus</h3>
-            <div className="text-2xl font-bold text-primary mb-1">
-              {Math.round(consensus.value.percentage * 100)}%
-            </div>
-            <p className="text-sm text-secondary capitalize">{consensus.value.level} agreement</p>
-          </div>
-        )}
-
-        <button onClick={onReset} className="btn-secondary w-full">
-          New Debate
-        </button>
-      </aside>
+      </footer>
     </div>
   );
 };
@@ -658,19 +793,19 @@ const ProgressIndicator: FC<ProgressIndicatorProps> = ({ currentStep }) => {
   if (currentStep === 'debate') return null;
 
   return (
-    <div className="flex items-center justify-center gap-2 mb-12">
+    <div className="flex items-center justify-center gap-2 mb-6">
       {steps.map((step, i) => (
         <div key={step.id} className="flex items-center">
-          <div className={`step-dot ${getStepStatus(step.id)}`}>
+          <div className={`step-dot w-6 h-6 text-xs ${getStepStatus(step.id)}`}>
             {getStepStatus(step.id) === 'completed' ? (
-              <CheckIcon className="w-4 h-4" />
+              <CheckIcon className="w-3 h-3" />
             ) : (
               i + 1
             )}
           </div>
-          <span className="ml-2 text-sm font-medium hidden sm:inline">{step.label}</span>
+          <span className="ml-1.5 text-xs font-medium hidden sm:inline">{step.label}</span>
           {i < steps.length - 1 && (
-            <div className={`step-line w-8 mx-3 ${getStepStatus(steps[i + 1]!.id) === 'completed' || getStepStatus(steps[i + 1]!.id) === 'active' ? '' : ''}`} />
+            <div className={`step-line w-6 mx-2 ${getStepStatus(steps[i + 1]!.id) === 'completed' || getStepStatus(steps[i + 1]!.id) === 'active' ? '' : ''}`} />
           )}
         </div>
       ))}
@@ -686,10 +821,12 @@ export const App: FC = () => {
   const [step, setStep] = useState<SetupStep>('question');
   const [question, setQuestion] = useState('');
   const [goal, setGoal] = useState<Goal | null>(null);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
 
   const { setConfig, startDebate, debateStarted, reset: resetStore } = useDebateStore.getState();
 
   const handleStartDebate = useCallback((agents: string[]) => {
+    setSelectedAgents(agents);
     setConfig({
       question,
       participants: agents,
@@ -708,6 +845,7 @@ export const App: FC = () => {
     setStep('question');
     setQuestion('');
     setGoal(null);
+    setSelectedAgents([]);
   }, [resetStore]);
 
   // Auto-advance after selecting goal
@@ -720,24 +858,24 @@ export const App: FC = () => {
   }, [goal, step]);
 
   if (step === 'debate') {
-    return <DebateView question={question} onReset={handleReset} />;
+    return <DebateView question={question} selectedAgents={selectedAgents} onReset={handleReset} />;
   }
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
+      {/* Header - compact */}
       <header className="border-b border-light">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <SparklesIcon className="w-6 h-6 text-primary" />
-            <span className="font-bold text-xl">DebateUI</span>
+            <SparklesIcon className="w-5 h-5 text-primary" />
+            <span className="font-bold">DebateUI</span>
           </div>
-          <span className="text-sm text-muted">AI-Powered Multi-Agent Debates</span>
+          <span className="text-xs text-muted">AI Multi-Agent Debates</span>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col justify-center px-6 py-12">
+      {/* Main content - reduced padding */}
+      <main className="flex-1 flex flex-col justify-center px-4 py-6">
         <div className="max-w-4xl mx-auto w-full">
           <ProgressIndicator currentStep={step} />
 
@@ -769,8 +907,8 @@ export const App: FC = () => {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-light py-4 text-center text-sm text-muted">
+      {/* Footer - compact */}
+      <footer className="border-t border-light py-2 text-center text-xs text-muted">
         Powered by Claude, GPT-4, Gemini & DeepSeek
       </footer>
     </div>

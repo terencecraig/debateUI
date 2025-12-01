@@ -34,10 +34,13 @@ export {
   isConsensusEvent,
   isErrorEvent,
   isCompleteEvent,
+  isCCREvent,
   type StreamEvent,
   type StreamEventHandler,
   type SSEClient,
   type SSEClientOptions,
+  type CCREventType,
+  type CCREventData,
 } from './streaming/sse-client';
 
 /**
