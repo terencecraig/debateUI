@@ -148,11 +148,25 @@ export const useBranchCount = (): number =>
   useDebateStore((state) => state.branching.branches.size);
 
 /**
- * Returns all branches as an array.
- * Note: This creates a new array on every call - use sparingly.
+ * Returns the number of branches (for change detection).
  */
-export const useAllBranches = (): BranchInfo[] =>
-  useDebateStore((state) => Array.from(state.branching.branches.values()));
+const selectBranchCount = (state: { branching: BranchingState }) =>
+  state.branching.branches.size;
+
+/**
+ * Returns all branches as an array.
+ * Uses branch count to detect changes and avoid infinite loops.
+ */
+export const useAllBranches = (): BranchInfo[] => {
+  // Subscribe to branch count for change detection
+  const branchCount = useDebateStore(selectBranchCount);
+  // Get branches from current state (not subscribed to avoid loop)
+  const branches = useDebateStore.getState().branching.branches;
+
+  // Only recompute array when count changes
+  if (branchCount === 0) return [];
+  return Array.from(branches.values());
+};
 
 /**
  * Returns a specific branch by ID, if it exists.
