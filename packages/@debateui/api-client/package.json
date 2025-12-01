@@ -19,9 +19,12 @@
   "dependencies": {
     "@debateui/core": "workspace:*",
     "fp-ts": "^2.16.9",
+    "ky": "^1.14.0",
+    "uuid": "^13.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/uuid": "^11.0.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.5"
   }
