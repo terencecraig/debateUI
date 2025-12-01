@@ -1,7 +1,4 @@
-// @debateui/core - Domain types and utilities
-// This file exports all types and utilities
-
-export const VERSION = '0.1.0';
+// Core domain types for debate system - Re-exports from source modules
 
 // Debate types
 export {
@@ -15,7 +12,7 @@ export {
   type Turn,
   type Branch,
   type DebateTranscript,
-} from './types/debate';
+} from './debate';
 
 // Participant types
 export {
@@ -29,7 +26,7 @@ export {
   type Participant,
   type ParticipantType,
   type ModelProvider,
-} from './types/participant';
+} from './participant';
 
 // Consensus types
 export {
@@ -42,7 +39,7 @@ export {
   hasConsensus,
   type ConsensusLevel,
   type ConsensusResult,
-} from './types/consensus';
+} from './consensus';
 
 // API Response types
 export {
@@ -57,7 +54,7 @@ export {
   type DebateStatus,
   type DebateResponse,
   type BranchInfo,
-} from './types/api-responses';
+} from './api-responses';
 
 // API Error types
 export {
@@ -77,4 +74,49 @@ export {
   conflictError,
   serverError,
   formatApiError,
-} from './types/errors';
+} from './errors';
+
+// State types
+export {
+  type DebateState,
+  type BranchingState,
+  type ForkDraft,
+  type StoreState,
+  isIdle,
+  isConfiguring,
+  isStarting,
+  isRunning,
+  isPaused,
+  isCompleted,
+  isError,
+  idle,
+  configuring,
+  starting,
+  running,
+  paused,
+  completed,
+  error,
+} from './state';
+
+// Action types
+export {
+  type DebateAction,
+  type BranchingAction,
+  updateConfig,
+  startDebate,
+  debateStarted,
+  receiveTurn,
+  roundComplete,
+  pauseDebate,
+  resumeDebate,
+  debateComplete,
+  error as errorAction,
+  reset,
+  selectBranch,
+  startFork,
+  updateForkDraft,
+  submitFork,
+  forkCreated,
+  cancelFork,
+  canTransition,
+} from './actions';

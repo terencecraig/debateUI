@@ -13,12 +13,22 @@
     "lint": "pnpm --filter @debateui/app lint",
     "clean": "pnpm -r exec rm -rf dist node_modules"
   },
-  "keywords": ["debate", "ai", "multi-agent"],
+  "keywords": [
+    "debate",
+    "ai",
+    "multi-agent"
+  ],
   "author": "CCR Team",
   "license": "MIT",
   "packageManager": "pnpm@10.24.0",
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "typescript-eslint": "^8.48.0"
   }
 }
