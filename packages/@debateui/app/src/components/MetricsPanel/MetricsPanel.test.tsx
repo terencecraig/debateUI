@@ -123,8 +123,9 @@ describe('MetricsPanel', () => {
 
     render(<MetricsPanel />);
 
-    // debateStarted sets currentRound to 1
-    expect(screen.getByText('1')).toBeInTheDocument();
+    // debateStarted sets currentRound to 1, also turns = 1, so use getAllByText
+    expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Current Round')).toBeInTheDocument();
   });
 
   it('displays consensus when available', async () => {
@@ -213,8 +214,8 @@ describe('MetricsPanel', () => {
 
     const { rerender } = render(<MetricsPanel />);
 
-    // Initial state: 1 turn
-    expect(screen.getByText('1')).toBeInTheDocument();
+    // Initial state: 1 turn - use getAllByText since "1" appears for turns and round
+    expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('150')).toBeInTheDocument(); // tokens
     expect(screen.getByText('$0.0045')).toBeInTheDocument(); // cost
 

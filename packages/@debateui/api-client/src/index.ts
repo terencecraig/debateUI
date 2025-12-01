@@ -27,6 +27,19 @@ export {
   type CreateForkOptions,
 } from './api/branch-api';
 
+// Export SSE Streaming client
+export {
+  createSSEClient,
+  isTurnEvent,
+  isConsensusEvent,
+  isErrorEvent,
+  isCompleteEvent,
+  type StreamEvent,
+  type StreamEventHandler,
+  type SSEClient,
+  type SSEClientOptions,
+} from './streaming/sse-client';
+
 /**
  * Combined API client interface
  */
